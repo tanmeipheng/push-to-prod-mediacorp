@@ -205,3 +205,25 @@ def create_and_push_pr(
     print(f"   PR opened: {pr_url}")
 
     return branch_name, pr_url
+
+
+def push_existing_branch_and_pr(
+    branch_name: str,
+    fault_type: str,
+    incident_report: str,
+) -> str:
+    """
+    Push an already-created local branch and open a PR.
+
+    Used when the branch was created during a pipeline run (push=False)
+    and the user later wants to promote it to a PR.
+
+    Returns the PR HTML URL.
+    """
+    push_branch(branch_name)
+    print(f"   Pushed existing branch: {branch_name}")
+
+    pr_url = open_pull_request(branch_name, fault_type, incident_report)
+    print(f"   PR opened: {pr_url}")
+
+    return pr_url
