@@ -35,6 +35,8 @@ class PipelineState(TypedDict, total=False):
     action: str
     confidence: float
     summary: str
+    pipeline_status: str
+    notifications_sent: list[str]
 
     # after code generation
     fixed_code: str
@@ -54,15 +56,37 @@ class PipelineState(TypedDict, total=False):
 
 def classify_node(state: PipelineState) -> dict:
     """Run the LLM router to classify the crash log."""
+    from notifier.slack_webhook import (
+        send_detection_alert,
+        send_triage_complete_alert,
+    )
+
     print("\n🔍 [Router] Classifying crash log…")
+    send_detection_alert(
+        source_file_path=state.get("source_file_path", "vulnerable_app/integration.py"),
+    )
     result = classify_fault(state["crash_log"])
     print(f"   ➜ Fault: {result['fault_type']}  |  Action: {result['action']}  |  Confidence: {result['confidence']}")
+    remediation_status = (
+        "Ready for remediation"
+        if result["fault_type"] != "unknown"
+        else "Manual review required"
+    )
+    send_triage_complete_alert(
+        fault_type=result["fault_type"],
+        action=result["action"],
+        confidence=result["confidence"],
+        summary=result["summary"],
+        remediation_status=remediation_status,
+    )
     return {
         "fault_type": result["fault_type"],
         "http_status": result.get("http_status"),
         "action": result["action"],
         "confidence": result["confidence"],
         "summary": result["summary"],
+        "pipeline_status": remediation_status,
+        "notifications_sent": state.get("notifications_sent", []) + ["detected", "triaged"],
     }
 
 
@@ -116,6 +140,7 @@ def pr_node(state: PipelineState) -> dict:
     """Create a feature branch (and optionally push + open PR)."""
     print("\n📦 [Automator] Creating fix branch…")
     from automator.github_pr import create_and_push_pr
+    from notifier.slack_webhook import send_review_ready_alert
 
     # push=True will also push to remote and open a PR
     # push=False keeps everything local (safe for dev/demo)
@@ -135,26 +160,40 @@ def pr_node(state: PipelineState) -> dict:
     else:
         print(f"   ✅ Branch ready (local): {branch_name}")
 
+    review_target = pr_url or f"local:{branch_name}"
+    send_review_ready_alert(
+        fault_type=state["fault_type"],
+        branch_name=branch_name,
+        pr_url=review_target,
+    )
+
     return {
         "branch_name": branch_name,
-        "pr_url": pr_url or f"local:{branch_name}",
+        "pr_url": review_target,
+        "pipeline_status": "PR opened" if pr_url else "Branch ready for review",
+        "notifications_sent": state.get("notifications_sent", []) + ["review_ready"],
     }
 
 
 def notify_node(state: PipelineState) -> dict:
-    """Send a Slack notification."""
-    print("\n📢 [Notifier] Sending Slack alert…")
-    from notifier.slack_webhook import send_triage_alert
+    """Send the final Slack incident report."""
+    print("\n📢 [Notifier] Sending Slack incident report…")
+    from notifier.slack_webhook import send_incident_report_alert
 
-    send_triage_alert(
+    send_incident_report_alert(
         fault_type=state["fault_type"],
         action=state["action"],
         confidence=state["confidence"],
         summary=state["summary"],
+        changes_summary=state["changes_summary"],
         pr_url=state.get("pr_url", "pending"),
     )
-    print("   ✅ Slack notification sent.")
-    return {"notified": True}
+    print("   ✅ Slack incident report sent.")
+    return {
+        "notified": True,
+        "pipeline_status": "Incident report shared",
+        "notifications_sent": state.get("notifications_sent", []) + ["incident_report"],
+    }
 
 
 # ── Should we act? ────────────────────────────────────────────
