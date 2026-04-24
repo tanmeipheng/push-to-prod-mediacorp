@@ -4,6 +4,7 @@ that integrate with the dashboard's incident tracking and SSE.
 """
 
 import asyncio
+import json
 import os
 import sys
 import traceback
@@ -16,6 +17,7 @@ if PROJECT_ROOT not in sys.path:
 from dashboard.backend.models import (
     add_pipeline_event,
     create_incident,
+    get_incident,
     update_incident,
 )
 from dashboard.backend.sse import broadcaster
@@ -40,11 +42,38 @@ async def trigger_crash() -> str:
 async def trigger_classify(incident_id: int, crash_log: str) -> dict:
     """Classify a crash log and update the incident."""
     from agent.router import classify_fault
+    from notifier.slack_webhook import send_detection_alert, send_triage_complete_alert
 
     await _emit(incident_id, "classify", "start")
     try:
+        # Send detection alert to Slack
         loop = asyncio.get_event_loop()
+        source_file_path = "vulnerable_app/integration.py"
+        await loop.run_in_executor(None, lambda: send_detection_alert(source_file_path=source_file_path))
+        await _emit(incident_id, "classify", "slack_detection", {"notification": "detected"})
+
         result = await loop.run_in_executor(None, classify_fault, crash_log)
+
+        remediation_status = (
+            "Ready for remediation"
+            if result["fault_type"] != "unknown"
+            else "Manual review required"
+        )
+
+        # Send triage complete alert to Slack
+        await loop.run_in_executor(
+            None,
+            lambda: send_triage_complete_alert(
+                fault_type=result["fault_type"],
+                action=result["action"],
+                confidence=result["confidence"],
+                summary=result["summary"],
+                remediation_status=remediation_status,
+            ),
+        )
+        await _emit(incident_id, "classify", "slack_triage", {"notification": "triaged"})
+
+        notifications_sent = ["detected", "triaged"]
         update_incident(
             incident_id,
             fault_type=result["fault_type"],
@@ -52,6 +81,8 @@ async def trigger_classify(incident_id: int, crash_log: str) -> dict:
             action=result["action"],
             confidence=result["confidence"],
             summary=result["summary"],
+            pipeline_status=remediation_status,
+            notifications_sent=json.dumps(notifications_sent),
         )
         await _emit(incident_id, "classify", "done", result)
         return result
@@ -106,6 +137,7 @@ async def trigger_pr(incident_id: int, fixed_code: str, test_code: str, incident
         existing_branch: If set, skip branch creation and push this branch directly.
     """
     from automator.github_pr import create_and_push_pr, push_existing_branch_and_pr
+    from notifier.slack_webhook import send_review_ready_alert
 
     await _emit(incident_id, "open_pr", "start")
     try:
@@ -132,12 +164,33 @@ async def trigger_pr(incident_id: int, fixed_code: str, test_code: str, incident
                 source_file_path, should_push,
             )
 
+        review_target = pr_url or f"local:{branch_name}"
+
+        # Send review ready alert to Slack
+        await loop.run_in_executor(
+            None,
+            lambda: send_review_ready_alert(
+                fault_type=fault_type,
+                branch_name=branch_name,
+                pr_url=review_target,
+            ),
+        )
+        await _emit(incident_id, "open_pr", "slack_review_ready", {"notification": "review_ready"})
+
+        # Update notifications_sent
+        incident = get_incident(incident_id)
+        prev_notifications = json.loads(incident.get("notifications_sent") or "[]") if incident else []
+        notifications_sent = prev_notifications + ["review_ready"]
+
+        pipeline_status = "PR opened" if pr_url else "Branch ready for review"
         update_incident(
             incident_id,
             branch_name=branch_name,
-            pr_url=pr_url or f"local:{branch_name}",
+            pr_url=review_target,
+            pipeline_status=pipeline_status,
+            notifications_sent=json.dumps(notifications_sent),
         )
-        await _emit(incident_id, "open_pr", "done", {"branch_name": branch_name, "pr_url": pr_url or f"local:{branch_name}"})
+        await _emit(incident_id, "open_pr", "done", {"branch_name": branch_name, "pr_url": review_target})
         return {"branch_name": branch_name, "pr_url": pr_url}
     except Exception as e:
         error_detail = traceback.format_exc()
@@ -146,17 +199,36 @@ async def trigger_pr(incident_id: int, fixed_code: str, test_code: str, incident
         raise
 
 
-async def trigger_notify(incident_id: int, fault_type: str, action: str, confidence: float, summary: str, pr_url: str) -> None:
-    """Send Slack notification and update the incident."""
-    from notifier.slack_webhook import send_triage_alert
+async def trigger_notify(incident_id: int, fault_type: str, action: str, confidence: float, summary: str, pr_url: str, changes_summary: str = "") -> None:
+    """Send Slack incident report and update the incident."""
+    from notifier.slack_webhook import send_incident_report_alert
 
     await _emit(incident_id, "notify", "start")
     try:
         loop = asyncio.get_event_loop()
         await loop.run_in_executor(
-            None, send_triage_alert, fault_type, action, confidence, summary, pr_url,
+            None,
+            lambda: send_incident_report_alert(
+                fault_type=fault_type,
+                action=action,
+                confidence=confidence,
+                summary=summary,
+                changes_summary=changes_summary,
+                pr_url=pr_url,
+            ),
         )
-        update_incident(incident_id, notified=1)
+
+        # Update notifications_sent
+        incident = get_incident(incident_id)
+        prev_notifications = json.loads(incident.get("notifications_sent") or "[]") if incident else []
+        notifications_sent = prev_notifications + ["incident_report"]
+
+        update_incident(
+            incident_id,
+            notified=1,
+            pipeline_status="Incident report shared",
+            notifications_sent=json.dumps(notifications_sent),
+        )
         await _emit(incident_id, "notify", "done", {"notified": True})
     except Exception as e:
         await _emit(incident_id, "notify", "error", {"error": str(e)})
@@ -198,7 +270,6 @@ async def run_full_pipeline(crash_log: str | None = None) -> int:
         )
 
         # Read updated incident to get full data
-        from dashboard.backend.models import get_incident
         incident = get_incident(incident_id)
 
         # Step 4: PR (push=True so it actually creates the PR on GitHub)
@@ -223,6 +294,7 @@ async def run_full_pipeline(crash_log: str | None = None) -> int:
                 classification["confidence"],
                 classification["summary"],
                 incident.get("pr_url", "pending"),
+                changes_summary=incident.get("changes_summary", ""),
             )
         except Exception:
             pass  # Non-fatal

@@ -20,10 +20,14 @@ interface TimelineDataPoint {
 
 export default function TimelineChart({
   data,
+  collapsed = false,
+  onToggle,
 }: {
   data: TimelineDataPoint[];
+  collapsed?: boolean;
+  onToggle?: () => void;
 }) {
-  if (data.length === 0) {
+  if (data.length === 0 && !collapsed) {
     return (
       <div className="rounded-xl border border-card-border bg-card p-8 text-center text-muted text-sm">
         No incident data yet. Run the pipeline to see activity here.
@@ -31,11 +35,32 @@ export default function TimelineChart({
     );
   }
 
+  if (collapsed) {
+    return (
+      <button
+        onClick={onToggle}
+        className="rounded-xl border border-card-border bg-card flex items-center justify-center py-4 px-2 h-full min-h-[200px] group hover:border-gray-500 transition-colors"
+      >
+        <span className="text-xs font-semibold text-muted uppercase tracking-widest [writing-mode:vertical-lr] rotate-180 group-hover:text-white transition-colors">
+          ◀ Incident Timeline
+        </span>
+      </button>
+    );
+  }
+
   return (
     <div className="rounded-xl border border-card-border bg-card p-4">
-      <h3 className="text-sm font-semibold text-muted uppercase tracking-wider mb-4">
-        Incident Timeline (7 days)
-      </h3>
+      <button
+        onClick={onToggle}
+        className="w-full flex items-center justify-between text-left group mb-4"
+      >
+        <h3 className="text-sm font-semibold text-muted uppercase tracking-wider">
+          Incident Timeline (7 days)
+        </h3>
+        <span className="text-muted group-hover:text-white transition-colors text-xs" title="Collapse">
+          ▶
+        </span>
+      </button>
       <ResponsiveContainer width="100%" height={180}>
         <AreaChart data={data}>
           <defs>

@@ -64,9 +64,16 @@ export default function IncidentCard({
             </span>
           )}
         </div>
-        <p className="text-xs text-muted truncate">
-          {incident.summary || "Processing..."}
-        </p>
+        <div className="flex items-center gap-2">
+          <p className="text-xs text-muted truncate flex-1">
+            {incident.summary || "Processing..."}
+          </p>
+          {incident.pipeline_status && (
+            <span className="text-[10px] font-medium text-blue-300 bg-blue-900/40 px-1.5 py-0.5 rounded-full whitespace-nowrap">
+              {incident.pipeline_status}
+            </span>
+          )}
+        </div>
       </div>
 
       <StatusBadge status={mapStatus(incident.status)} size="sm" />

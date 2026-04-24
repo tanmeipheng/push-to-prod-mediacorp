@@ -206,6 +206,7 @@ async def api_trigger_notify(req: NotifyRequest):
         incident["confidence"] or 0.0,
         incident["summary"] or "",
         incident.get("pr_url", "pending"),
+        changes_summary=incident.get("changes_summary", ""),
     )
     return {"notified": True}
 

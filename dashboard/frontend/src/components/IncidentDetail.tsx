@@ -162,8 +162,53 @@ export default function IncidentDetail({
             {incident.summary && (
               <p className="mt-3 text-sm text-gray-300">{incident.summary}</p>
             )}
+            {incident.pipeline_status && (
+              <div className="mt-3 flex items-center gap-2">
+                <span className="text-xs text-muted">Pipeline Status:</span>
+                <span className="text-xs font-medium text-blue-300 bg-blue-900/40 px-2 py-0.5 rounded-full">
+                  {incident.pipeline_status}
+                </span>
+              </div>
+            )}
           </div>
         )}
+
+        {/* Slack Notification Stages */}
+        {incident.notifications_sent && (() => {
+          try {
+            const stages: string[] = JSON.parse(incident.notifications_sent);
+            if (stages.length === 0) return null;
+            const stageConfig: Record<string, { label: string; icon: string; color: string }> = {
+              detected: { label: "Detection Alert", icon: "🚨", color: "text-red-300 bg-red-900/40 border-red-700" },
+              triaged: { label: "Triage Complete", icon: "🧭", color: "text-yellow-300 bg-yellow-900/40 border-yellow-700" },
+              review_ready: { label: "Review Ready", icon: "📦", color: "text-purple-300 bg-purple-900/40 border-purple-700" },
+              incident_report: { label: "Incident Report", icon: "✅", color: "text-green-300 bg-green-900/40 border-green-700" },
+            };
+            return (
+              <div className="rounded-xl border border-card-border bg-card p-5">
+                <h3 className="text-sm font-semibold text-muted uppercase tracking-wider mb-3">
+                  Slack Notifications
+                </h3>
+                <div className="flex flex-wrap gap-2">
+                  {stages.map((stage) => {
+                    const cfg = stageConfig[stage] || { label: stage, icon: "📢", color: "text-gray-300 bg-gray-900/40 border-gray-700" };
+                    return (
+                      <span
+                        key={stage}
+                        className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium border ${cfg.color}`}
+                      >
+                        <span>{cfg.icon}</span>
+                        {cfg.label}
+                      </span>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          } catch {
+            return null;
+          }
+        })()}
 
         {/* Crash Log */}
         {incident.crash_log && (

@@ -9,7 +9,7 @@ import {
   Handle,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { type PipelineNodeState, type NodeStatus } from "@/lib/sse";
+import { type PipelineNodeState, type NodeStatus, type SlackStageState } from "@/lib/sse";
 import { motion } from "framer-motion";
 
 const statusStyles: Record<NodeStatus, { bg: string; border: string; shadow: string }> = {
@@ -21,10 +21,10 @@ const statusStyles: Record<NodeStatus, { bg: string; border: string; shadow: str
 };
 
 const nodeLabels: Record<string, { label: string; icon: string; description: string }> = {
-  classify: { label: "Classify", icon: "🔍", description: "LLM Router — Fault classification" },
+  classify: { label: "Classify", icon: "🔍", description: "LLM Router — Detect + triage" },
   codegen: { label: "Codegen", icon: "🔧", description: "LLM Coder — Generate fix + test" },
   open_pr: { label: "Open PR", icon: "📦", description: "GitHub — Branch & pull request" },
-  notify: { label: "Notify", icon: "📢", description: "Slack — Send alert" },
+  notify: { label: "Report", icon: "📢", description: "Slack — Incident report" },
 };
 
 function PipelineNode({ data }: { data: { nodeKey: string; status: NodeStatus } }) {
@@ -60,38 +60,94 @@ function PipelineNode({ data }: { data: { nodeKey: string; status: NodeStatus } 
   );
 }
 
-const nodeTypes = { pipeline: PipelineNode };
+function SlackNode({ data }: { data: { label: string; icon: string; sent: boolean } }) {
+  return (
+    <motion.div
+      initial={{ scale: 0.8, opacity: 0 }}
+      animate={{ scale: 1, opacity: 1 }}
+      className={`px-3 py-2 rounded-lg border text-center cursor-default min-w-[120px] ${
+        data.sent
+          ? "bg-emerald-950 border-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.2)]"
+          : "bg-gray-900 border-gray-700"
+      }`}
+    >
+      <Handle type="target" position={Position.Top} className="!bg-gray-600 !w-1.5 !h-1.5" />
+      <div className="text-sm mb-0.5">{data.icon}</div>
+      <div className={`text-[10px] font-medium ${data.sent ? "text-emerald-300" : "text-gray-500"}`}>
+        {data.label}
+      </div>
+      <div className={`text-[9px] mt-0.5 ${data.sent ? "text-emerald-400" : "text-gray-600"}`}>
+        {data.sent ? "✓ sent" : "pending"}
+      </div>
+    </motion.div>
+  );
+}
 
-export default function PipelineGraph({ nodeStates }: { nodeStates: PipelineNodeState }) {
+const nodeTypes = { pipeline: PipelineNode, slack: SlackNode };
+
+export default function PipelineGraph({
+  nodeStates,
+  slackStages,
+}: {
+  nodeStates: PipelineNodeState;
+  slackStages: SlackStageState;
+}) {
   const nodes: Node[] = [
+    // Main pipeline nodes
     {
       id: "classify",
       type: "pipeline",
-      position: { x: 50, y: 100 },
+      position: { x: 50, y: 80 },
       data: { nodeKey: "classify", status: nodeStates.classify },
     },
     {
       id: "codegen",
       type: "pipeline",
-      position: { x: 300, y: 100 },
+      position: { x: 300, y: 80 },
       data: { nodeKey: "codegen", status: nodeStates.codegen },
     },
     {
       id: "open_pr",
       type: "pipeline",
-      position: { x: 550, y: 100 },
+      position: { x: 550, y: 80 },
       data: { nodeKey: "open_pr", status: nodeStates.open_pr },
     },
     {
       id: "notify",
       type: "pipeline",
-      position: { x: 800, y: 100 },
+      position: { x: 800, y: 80 },
       data: { nodeKey: "notify", status: nodeStates.notify },
     },
+    // Slack notification stage nodes
+    {
+      id: "slack_detected",
+      type: "slack",
+      position: { x: 20, y: 230 },
+      data: { label: "Detection", icon: "🚨", sent: slackStages.detected },
+    },
+    {
+      id: "slack_triaged",
+      type: "slack",
+      position: { x: 155, y: 230 },
+      data: { label: "Triage", icon: "🧭", sent: slackStages.triaged },
+    },
+    {
+      id: "slack_review_ready",
+      type: "slack",
+      position: { x: 555, y: 230 },
+      data: { label: "Review Ready", icon: "📋", sent: slackStages.review_ready },
+    },
+    {
+      id: "slack_incident_report",
+      type: "slack",
+      position: { x: 800, y: 230 },
+      data: { label: "Incident Report", icon: "📊", sent: slackStages.incident_report },
+    },
+    // Skip node
     {
       id: "skip",
       type: "default",
-      position: { x: 300, y: 250 },
+      position: { x: 300, y: 310 },
       data: { label: "⏭ Skip (unknown fault)" },
       style: {
         background: "#1c1917",
@@ -105,6 +161,7 @@ export default function PipelineGraph({ nodeStates }: { nodeStates: PipelineNode
   ];
 
   const edges: Edge[] = [
+    // Main pipeline edges
     {
       id: "e-classify-codegen",
       source: "classify",
@@ -137,10 +194,39 @@ export default function PipelineGraph({ nodeStates }: { nodeStates: PipelineNode
       label: "unknown",
       labelStyle: { fill: "#78716c", fontSize: 10 },
     },
+    // Slack stage edges (connect pipeline nodes to their Slack sub-steps)
+    {
+      id: "e-classify-slack-detected",
+      source: "classify",
+      target: "slack_detected",
+      type: "straight",
+      style: { stroke: slackStages.detected ? "#10b981" : "#374151", strokeDasharray: "4,4" },
+    },
+    {
+      id: "e-classify-slack-triaged",
+      source: "classify",
+      target: "slack_triaged",
+      type: "straight",
+      style: { stroke: slackStages.triaged ? "#10b981" : "#374151", strokeDasharray: "4,4" },
+    },
+    {
+      id: "e-pr-slack-review",
+      source: "open_pr",
+      target: "slack_review_ready",
+      type: "straight",
+      style: { stroke: slackStages.review_ready ? "#10b981" : "#374151", strokeDasharray: "4,4" },
+    },
+    {
+      id: "e-notify-slack-report",
+      source: "notify",
+      target: "slack_incident_report",
+      type: "straight",
+      style: { stroke: slackStages.incident_report ? "#10b981" : "#374151", strokeDasharray: "4,4" },
+    },
   ];
 
   return (
-    <div className="w-full h-[340px] rounded-xl border border-card-border bg-card overflow-hidden">
+    <div className="w-full h-[400px] rounded-xl border border-card-border bg-card overflow-hidden">
       <ReactFlow
         nodes={nodes}
         edges={edges}

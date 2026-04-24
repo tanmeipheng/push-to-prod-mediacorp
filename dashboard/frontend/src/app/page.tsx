@@ -36,7 +36,8 @@ export default function Dashboard() {
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [timeline, setTimeline] = useState<TimelineDay[]>([]);
   const [selectedIncident, setSelectedIncident] = useState<(Incident & { events?: Array<{ node: string; event_type: string; data: string | null; created_at: string }> }) | null>(null);
-  const { nodes, lastEvent } = usePipelineState();
+  const [timelineCollapsed, setTimelineCollapsed] = useState(false);
+  const { nodes, slackStages, lastEvent } = usePipelineState();
 
   const loadData = useCallback(async () => {
     try {
@@ -116,14 +117,18 @@ export default function Dashboard() {
           ]}
         />
 
-        {/* Timeline + Pipeline in a 2-col layout */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <TimelineChart data={timeline} />
-          <div className="space-y-4">
+        {/* Timeline + Pipeline in a flexible layout */}
+        <div className="flex gap-6">
+          <div className={`transition-all duration-300 ease-in-out ${
+            timelineCollapsed ? "w-10 flex-shrink-0" : "w-1/2 flex-shrink-0"
+          }`}>
+            <TimelineChart data={timeline} collapsed={timelineCollapsed} onToggle={() => setTimelineCollapsed(c => !c)} />
+          </div>
+          <div className="flex-1 min-w-0 space-y-4">
             <h3 className="text-sm font-semibold text-muted uppercase tracking-wider">
               Pipeline Status
             </h3>
-            <PipelineGraph nodeStates={nodes} />
+            <PipelineGraph nodeStates={nodes} slackStages={slackStages} />
           </div>
         </div>
 

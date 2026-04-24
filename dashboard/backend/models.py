@@ -49,6 +49,10 @@ def init_db():
             -- notification
             notified INTEGER DEFAULT 0,
 
+            -- pipeline status tracking
+            pipeline_status TEXT,
+            notifications_sent TEXT,  -- JSON array of notification stage names
+
             -- errors
             error_message TEXT
         );
