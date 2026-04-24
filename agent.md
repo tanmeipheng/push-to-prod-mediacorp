@@ -31,7 +31,7 @@ Build a one-repo demo where a vulnerable Python worker crashes on HTTP 429, TFAH
   - `uv run python -m automation.open_pr --bundle artifacts/latest/remediation_bundle.json`
 
 ## Git Workflow
-- No direct commits to `main`; use `builder-a/<task>`, `builder-b/<task>`, and `demo/integration`.
+- No direct commits to `develop`; use `builder-a/<task>`, `builder-b/<task>`, and `demo/integration`.
 - Keep commits atomic and use Conventional Commits with lowercase types.
 - Allowed common types for this repo: `feat`, `fix`, `docs`, `test`, `refactor`, `chore`.
 - Use a scope when it adds clarity, for example:
