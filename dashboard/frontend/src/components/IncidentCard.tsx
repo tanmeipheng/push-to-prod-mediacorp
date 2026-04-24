@@ -73,6 +73,11 @@ export default function IncidentCard({
               {incident.pipeline_status}
             </span>
           )}
+          {incident.jira_issue_key && (
+            <span className="text-[10px] font-medium text-blue-200 bg-blue-800/40 px-1.5 py-0.5 rounded-full whitespace-nowrap">
+              🎫 {incident.jira_issue_key}
+            </span>
+          )}
         </div>
       </div>
 

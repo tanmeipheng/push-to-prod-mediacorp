@@ -9,7 +9,7 @@ import {
   Handle,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { type PipelineNodeState, type NodeStatus, type SlackStageState } from "@/lib/sse";
+import { type PipelineNodeState, type NodeStatus, type SlackStageState, type JiraState } from "@/lib/sse";
 import { motion } from "framer-motion";
 
 const statusStyles: Record<NodeStatus, { bg: string; border: string; shadow: string }> = {
@@ -83,7 +83,39 @@ function SlackNode({ data }: { data: { label: string; icon: string; sent: boolea
   );
 }
 
-const nodeTypes = { pipeline: PipelineNode, slack: SlackNode };
+function JiraNode({ data }: { data: { issueKey: string | null; status: string | null } }) {
+  const active = !!data.issueKey;
+  const statusColors: Record<string, string> = {
+    "TO DO": "text-blue-300",
+    "IN PROGRESS": "text-yellow-300",
+    "IN REVIEW": "text-purple-300",
+    "DONE": "text-green-300",
+  };
+  const statusColor = data.status ? (statusColors[data.status.toUpperCase()] || "text-gray-300") : "text-gray-500";
+
+  return (
+    <motion.div
+      initial={{ scale: 0.8, opacity: 0 }}
+      animate={{ scale: 1, opacity: 1 }}
+      className={`px-3 py-2 rounded-lg border text-center cursor-default w-[120px] ${
+        active
+          ? "bg-blue-950 border-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.2)]"
+          : "bg-gray-900/60 border-gray-700/50"
+      }`}
+    >
+      <Handle type="target" position={Position.Top} className="!bg-gray-600 !w-1.5 !h-1.5" />
+      <div className="text-sm mb-0.5">🎫</div>
+      <div className={`text-[10px] font-medium ${active ? "text-blue-300" : "text-gray-500"}`}>
+        {data.issueKey || "Jira Ticket"}
+      </div>
+      <div className={`text-[9px] mt-0.5 ${statusColor}`}>
+        {data.status || "pending"}
+      </div>
+    </motion.div>
+  );
+}
+
+const nodeTypes = { pipeline: PipelineNode, slack: SlackNode, jira: JiraNode };
 
 // Centered layout constants
 const PIPELINE_Y = 60;
@@ -94,9 +126,11 @@ const START_X = 60;
 export default function PipelineGraph({
   nodeStates,
   slackStages,
+  jiraState,
 }: {
   nodeStates: PipelineNodeState;
   slackStages: SlackStageState;
+  jiraState: JiraState;
 }) {
   const nodes: Node[] = [
     // Main pipeline nodes — evenly spaced, centered row
@@ -148,6 +182,13 @@ export default function PipelineGraph({
       type: "slack",
       position: { x: START_X + NODE_SPACING * 3 + 20, y: SLACK_Y },
       data: { label: "Incident Report", icon: "📊", sent: slackStages.incident_report },
+    },
+    // Jira ticket node — centered between codegen and open_pr, below pipeline
+    {
+      id: "jira_ticket",
+      type: "jira",
+      position: { x: START_X + NODE_SPACING + 50, y: SLACK_Y },
+      data: { issueKey: jiraState.issueKey, status: jiraState.status },
     },
   ];
 
@@ -204,6 +245,14 @@ export default function PipelineGraph({
       target: "slack_incident_report",
       type: "straight",
       style: { stroke: slackStages.incident_report ? "#10b981" : "#374151", strokeDasharray: "4,4" },
+    },
+    // Jira ticket edge — from classify to Jira node
+    {
+      id: "e-classify-jira",
+      source: "classify",
+      target: "jira_ticket",
+      type: "straight",
+      style: { stroke: jiraState.issueKey ? "#3b82f6" : "#374151", strokeDasharray: "4,4" },
     },
   ];
 

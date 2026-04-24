@@ -49,6 +49,7 @@ async def trigger_classify(incident_id: int, crash_log: str, source_file_path_ov
     """Classify a crash log and update the incident."""
     from agent.router import classify_fault
     from notifier.slack_webhook import send_detection_alert, send_triage_complete_alert
+    from automator.jira_ticket import maybe_create_incident_issue
 
     await _emit(incident_id, "classify", "start")
     try:
@@ -65,6 +66,28 @@ async def trigger_classify(incident_id: int, crash_log: str, source_file_path_ov
             if result["fault_type"] != "unknown"
             else "Manual review required"
         )
+
+        # Create Jira issue
+        jira_state = await loop.run_in_executor(
+            None,
+            lambda: maybe_create_incident_issue(
+                fault_type=result["fault_type"],
+                action=result["action"],
+                confidence=result["confidence"],
+                summary=result["summary"],
+                crash_log=crash_log,
+                source_file_path=source_file_path,
+            ),
+        )
+        if jira_state.get("jira_issue_key"):
+            add_pipeline_event(incident_id, "jira", "created", {
+                "jira_issue_key": jira_state["jira_issue_key"],
+                "jira_status": jira_state.get("jira_status", "TO DO"),
+            })
+            await _emit(incident_id, "classify", "jira_created", {
+                "jira_issue_key": jira_state["jira_issue_key"],
+                "jira_status": jira_state.get("jira_status", "TO DO"),
+            })
 
         # Send triage complete alert to Slack
         await loop.run_in_executor(
@@ -89,6 +112,7 @@ async def trigger_classify(incident_id: int, crash_log: str, source_file_path_ov
             summary=result["summary"],
             pipeline_status=remediation_status,
             notifications_sent=json.dumps(notifications_sent),
+            **{k: v for k, v in jira_state.items() if k.startswith("jira_")},
         )
         await _emit(incident_id, "classify", "done", result)
         return result
@@ -101,10 +125,31 @@ async def trigger_classify(incident_id: int, crash_log: str, source_file_path_ov
 async def trigger_codegen(incident_id: int, source_code: str, fault_type: str, action: str, summary: str) -> dict:
     """Generate fix + test code and update the incident."""
     from agent.coder import generate_fix
+    from automator.jira_ticket import load_jira_config, maybe_transition_issue_to_status
 
     await _emit(incident_id, "codegen", "start")
     try:
         loop = asyncio.get_event_loop()
+
+        # Transition Jira to IN PROGRESS
+        incident = get_incident(incident_id)
+        jira_key = incident.get("jira_issue_key") if incident else None
+        jira_current_status = None
+        if jira_key:
+            jira_config = await loop.run_in_executor(None, load_jira_config)
+            if jira_config:
+                jira_state = await loop.run_in_executor(
+                    None,
+                    lambda: maybe_transition_issue_to_status(jira_key, jira_config.status_in_progress),
+                )
+                if jira_state.get("jira_status"):
+                    update_incident(incident_id, jira_status=jira_state["jira_status"])
+                    jira_current_status = jira_state["jira_status"]
+                    await _emit(incident_id, "codegen", "jira_transitioned", {
+                        "jira_issue_key": jira_key,
+                        "jira_status": jira_state["jira_status"],
+                    })
+
         result = await loop.run_in_executor(
             None, generate_fix, source_code, fault_type, action, summary
         )
@@ -172,6 +217,26 @@ async def trigger_pr(incident_id: int, fixed_code: str, test_code: str, incident
 
         review_target = pr_url or f"local:{branch_name}"
 
+        # Transition Jira to IN REVIEW
+        incident = get_incident(incident_id)
+        jira_key = incident.get("jira_issue_key") if incident else None
+        jira_current_status = None
+        if pr_url and jira_key:
+            from automator.jira_ticket import load_jira_config, maybe_transition_issue_to_status
+            jira_config = await loop.run_in_executor(None, load_jira_config)
+            if jira_config:
+                jira_state = await loop.run_in_executor(
+                    None,
+                    lambda: maybe_transition_issue_to_status(jira_key, jira_config.status_in_review),
+                )
+                if jira_state.get("jira_status"):
+                    update_incident(incident_id, jira_status=jira_state["jira_status"])
+                    jira_current_status = jira_state["jira_status"]
+                    await _emit(incident_id, "open_pr", "jira_transitioned", {
+                        "jira_issue_key": jira_key,
+                        "jira_status": jira_state["jira_status"],
+                    })
+
         # Send review ready alert to Slack
         await loop.run_in_executor(
             None,
@@ -223,6 +288,26 @@ async def trigger_notify(incident_id: int, fault_type: str, action: str, confide
                 pr_url=pr_url,
             ),
         )
+
+        # Transition Jira to DONE
+        incident = get_incident(incident_id)
+        jira_key = incident.get("jira_issue_key") if incident else None
+        jira_current_status = None
+        if jira_key:
+            from automator.jira_ticket import load_jira_config, maybe_transition_issue_to_status
+            jira_config = await loop.run_in_executor(None, load_jira_config)
+            if jira_config:
+                jira_state = await loop.run_in_executor(
+                    None,
+                    lambda: maybe_transition_issue_to_status(jira_key, jira_config.status_done),
+                )
+                if jira_state.get("jira_status"):
+                    update_incident(incident_id, jira_status=jira_state["jira_status"])
+                    jira_current_status = jira_state["jira_status"]
+                    await _emit(incident_id, "notify", "jira_transitioned", {
+                        "jira_issue_key": jira_key,
+                        "jira_status": jira_state["jira_status"],
+                    })
 
         # Update notifications_sent
         incident = get_incident(incident_id)

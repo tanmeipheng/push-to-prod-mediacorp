@@ -42,6 +42,13 @@ def init_db():
             changes_summary TEXT,
             incident_report TEXT,
 
+            -- Jira
+            jira_issue_key TEXT,
+            jira_issue_url TEXT,
+            jira_status TEXT,
+            jira_sprint_id TEXT,
+            jira_sprint_name TEXT,
+
             -- PR
             branch_name TEXT,
             pr_url TEXT,
@@ -73,6 +80,11 @@ def init_db():
         ("notifications_sent", "TEXT"),
         ("error_message", "TEXT"),
         ("source_file_path", "TEXT DEFAULT 'vulnerable_app/integration.py'"),
+        ("jira_issue_key", "TEXT"),
+        ("jira_issue_url", "TEXT"),
+        ("jira_status", "TEXT"),
+        ("jira_sprint_id", "TEXT"),
+        ("jira_sprint_name", "TEXT"),
     ]
     for col_name, col_type in _migrate_columns:
         try:
@@ -139,6 +151,7 @@ def get_incident_stats() -> dict:
     errored = conn.execute("SELECT COUNT(*) FROM incidents WHERE status = 'error'").fetchone()[0]
     running = conn.execute("SELECT COUNT(*) FROM incidents WHERE status = 'running'").fetchone()[0]
     prs = conn.execute("SELECT COUNT(*) FROM incidents WHERE pr_url IS NOT NULL AND pr_url != ''").fetchone()[0]
+    jira_tickets = conn.execute("SELECT COUNT(*) FROM incidents WHERE jira_issue_key IS NOT NULL AND jira_issue_key != ''").fetchone()[0]
     conn.close()
     return {
         "total": total,
@@ -147,6 +160,7 @@ def get_incident_stats() -> dict:
         "errored": errored,
         "running": running,
         "prs_opened": prs,
+        "jira_tickets": jira_tickets,
     }
 
 

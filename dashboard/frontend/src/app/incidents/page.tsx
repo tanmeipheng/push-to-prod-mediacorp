@@ -44,7 +44,7 @@ export default function IncidentsPage() {
       <header className="border-b border-card-border bg-card/50 backdrop-blur-sm sticky top-0 z-40">
         <div className="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <span className="text-xl font-bold text-white">🚨 TFAH</span>
+            <span className="text-xl font-bold text-white">🚨 TFAH (Transient Fault Auto-healer)</span>
             <span className="text-sm text-muted">Incident History</span>
           </div>
           <nav className="flex items-center gap-6">
