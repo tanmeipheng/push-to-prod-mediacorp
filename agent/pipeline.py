@@ -42,7 +42,8 @@ class PipelineState(TypedDict, total=False):
     changes_summary: str
     incident_report: str
 
-    # after PR
+    # after branching / PR
+    branch_name: str
     pr_url: str
 
     # after notification
@@ -112,19 +113,32 @@ def codegen_node(state: PipelineState) -> dict:
 
 
 def pr_node(state: PipelineState) -> dict:
-    """Create a local git branch with the fix commits."""
+    """Create a feature branch (and optionally push + open PR)."""
     print("\n📦 [Automator] Creating fix branch…")
-    from automator.github_pr import create_fix_branch
+    from automator.github_pr import create_and_push_pr
 
-    branch_name = create_fix_branch(
+    # push=True will also push to remote and open a PR
+    # push=False keeps everything local (safe for dev/demo)
+    should_push = os.environ.get("TFAH_PUSH_TO_REMOTE", "false").lower() == "true"
+
+    branch_name, pr_url = create_and_push_pr(
         fixed_code=state["fixed_code"],
         test_code=state["test_code"],
         incident_report=state["incident_report"],
         fault_type=state["fault_type"],
         source_file_path=state.get("source_file_path", "vulnerable_app/integration.py"),
+        push=should_push,
     )
-    print(f"   ✅ Branch ready: {branch_name}")
-    return {"pr_url": f"local branch: {branch_name}"}
+
+    if pr_url:
+        print(f"   ✅ PR opened: {pr_url}")
+    else:
+        print(f"   ✅ Branch ready (local): {branch_name}")
+
+    return {
+        "branch_name": branch_name,
+        "pr_url": pr_url or f"local:{branch_name}",
+    }
 
 
 def notify_node(state: PipelineState) -> dict:
