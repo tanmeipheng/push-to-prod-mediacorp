@@ -23,6 +23,23 @@ def _format_link(value: str) -> str:
     return f"`{value}`"
 
 
+def _get_code_owner_reference() -> str | None:
+    raw_value = os.environ.get("SLACK_CODE_OWNER", "").strip()
+    if not raw_value:
+        return None
+
+    if raw_value.startswith("<@") or raw_value.startswith("<!subteam^"):
+        return raw_value
+
+    if raw_value.startswith("U") and " " not in raw_value:
+        return f"<@{raw_value}>"
+
+    if raw_value.startswith("@"):
+        return raw_value
+
+    return f"@{raw_value}"
+
+
 def _build_payload(
     *,
     fallback_text: str,
@@ -123,16 +140,20 @@ def build_review_ready_payload(
     header_text = "TFAH Pull Request Opened" if pr_is_open else "TFAH Remediation Branch Ready"
     status_text = ":package: PR opened" if pr_is_open else ":package: Branch ready"
     review_target = _format_link(pr_url)
+    code_owner = _get_code_owner_reference()
+    fields = [
+        ("Fault Type", f"`{fault_type}`"),
+        ("Branch", f"`{branch_name}`"),
+        ("Review Target", review_target),
+    ]
+    if pr_is_open and code_owner:
+        fields.append(("Code Owner", code_owner))
 
     return _build_payload(
         fallback_text=f"TFAH review update: {fault_type}",
         header_text=header_text,
         status_text=status_text,
-        fields=[
-            ("Fault Type", f"`{fault_type}`"),
-            ("Branch", f"`{branch_name}`"),
-            ("Review Target", review_target),
-        ],
+        fields=fields,
         sections=["*Remediation is ready for review.*"],
     )
 

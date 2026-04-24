@@ -59,6 +59,21 @@ def test_review_ready_payload_includes_pr_link():
     assert not any("Changes:" in text for text in texts)
 
 
+def test_review_ready_payload_includes_code_owner_when_configured(monkeypatch):
+    monkeypatch.setenv("SLACK_CODE_OWNER", "U12345678")
+
+    payload = build_review_ready_payload(
+        fault_type="rate_limit_429",
+        branch_name="fix/transient-fault-rate_limit_429-123",
+        pr_url="https://github.com/example/repo/pull/12",
+    )
+
+    texts = _block_texts(payload)
+
+    assert any("Code Owner" in text for text in texts)
+    assert any("<@U12345678>" in text for text in texts)
+
+
 def test_incident_report_payload_contains_structured_report_sections():
     payload = build_incident_report_payload(
         fault_type="rate_limit_429",

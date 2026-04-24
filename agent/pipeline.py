@@ -37,6 +37,11 @@ class PipelineState(TypedDict, total=False):
     summary: str
     pipeline_status: str
     notifications_sent: list[str]
+    jira_issue_key: str
+    jira_issue_url: str
+    jira_status: str
+    jira_sprint_id: str
+    jira_sprint_name: str
 
     # after code generation
     fixed_code: str
@@ -56,6 +61,7 @@ class PipelineState(TypedDict, total=False):
 
 def classify_node(state: PipelineState) -> dict:
     """Run the LLM router to classify the crash log."""
+    from automator.jira_ticket import maybe_create_incident_issue
     from notifier.slack_webhook import (
         send_detection_alert,
         send_triage_complete_alert,
@@ -72,6 +78,14 @@ def classify_node(state: PipelineState) -> dict:
         if result["fault_type"] != "unknown"
         else "Manual review required"
     )
+    jira_state = maybe_create_incident_issue(
+        fault_type=result["fault_type"],
+        action=result["action"],
+        confidence=result["confidence"],
+        summary=result["summary"],
+        crash_log=state["crash_log"],
+        source_file_path=state.get("source_file_path", "vulnerable_app/integration.py"),
+    )
     send_triage_complete_alert(
         fault_type=result["fault_type"],
         action=result["action"],
@@ -87,12 +101,23 @@ def classify_node(state: PipelineState) -> dict:
         "summary": result["summary"],
         "pipeline_status": remediation_status,
         "notifications_sent": state.get("notifications_sent", []) + ["detected", "triaged"],
+        **jira_state,
     }
 
 
 def codegen_node(state: PipelineState) -> dict:
     """Run the LLM coder to generate fix + test."""
+    from automator.jira_ticket import load_jira_config, maybe_transition_issue_to_status
+
     print("\n🔧 [Coder] Generating resilient code + test…")
+    jira_state = {}
+    if state.get("jira_issue_key"):
+        jira_config = load_jira_config()
+        jira_state = maybe_transition_issue_to_status(
+            state["jira_issue_key"],
+            jira_config.status_in_progress,
+        ) if jira_config else {}
+
     result = generate_fix(
         source_code=state["source_code"],
         fault_type=state["fault_type"],
@@ -133,11 +158,13 @@ def codegen_node(state: PipelineState) -> dict:
         "test_code": test_code,
         "changes_summary": result["changes_summary"],
         "incident_report": incident_report,
+        **jira_state,
     }
 
 
 def pr_node(state: PipelineState) -> dict:
     """Create a feature branch (and optionally push + open PR)."""
+    from automator.jira_ticket import load_jira_config, maybe_transition_issue_to_status
     print("\n📦 [Automator] Creating fix branch…")
     from automator.github_pr import create_and_push_pr
     from notifier.slack_webhook import send_review_ready_alert
@@ -161,6 +188,13 @@ def pr_node(state: PipelineState) -> dict:
         print(f"   ✅ Branch ready (local): {branch_name}")
 
     review_target = pr_url or f"local:{branch_name}"
+    jira_state = {}
+    if pr_url and state.get("jira_issue_key"):
+        jira_config = load_jira_config()
+        jira_state = maybe_transition_issue_to_status(
+            state["jira_issue_key"],
+            jira_config.status_in_review,
+        ) if jira_config else {}
     send_review_ready_alert(
         fault_type=state["fault_type"],
         branch_name=branch_name,
@@ -172,6 +206,7 @@ def pr_node(state: PipelineState) -> dict:
         "pr_url": review_target,
         "pipeline_status": "PR opened" if pr_url else "Branch ready for review",
         "notifications_sent": state.get("notifications_sent", []) + ["review_ready"],
+        **jira_state,
     }
 
 

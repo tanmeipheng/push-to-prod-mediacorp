@@ -84,6 +84,8 @@ def main():
     print(f"   Action      : {final_state.get('action', 'N/A')}")
     print(f"   Confidence  : {final_state.get('confidence', 'N/A')}")
     print(f"   Status      : {final_state.get('pipeline_status', 'N/A')}")
+    print(f"   Jira Issue  : {final_state.get('jira_issue_key', 'N/A')}")
+    print(f"   Jira Status : {final_state.get('jira_status', 'N/A')}")
     print(f"   PR URL      : {final_state.get('pr_url', 'N/A')}")
     print(f"   Slack Steps : {', '.join(final_state.get('notifications_sent', [])) or 'N/A'}")
     print(f"   Notified    : {final_state.get('notified', False)}")
