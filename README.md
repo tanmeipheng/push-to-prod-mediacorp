@@ -25,7 +25,7 @@ Production services crash from **transient faults** — HTTP 429s, 503s, 504s, c
 
 ## Demo Video
 
-https://github.com/user-attachments/assets/YOUR_VIDEO_ID](https://youtu.be/hIc4GulS94o
+[https://youtu.be/hIc4GulS94o](https://youtu.be/hIc4GulS94o)
 
 > 📹 **[Watch the full demo →](https://youtu.be/hIc4GulS94o)**
 >
