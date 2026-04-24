@@ -208,3 +208,7 @@ __marimo__/
 
 # TFAH runtime artifacts
 artifacts/latest/
+
+# Dashboard
+*.db
+dashboard/frontend/node_modules/
