@@ -25,9 +25,9 @@ Production services crash from **transient faults** — HTTP 429s, 503s, 504s, c
 
 ## Demo Video
 
-https://github.com/user-attachments/assets/YOUR_VIDEO_ID
+https://github.com/user-attachments/assets/YOUR_VIDEO_ID](https://youtu.be/hIc4GulS94o
 
-> 📹 **[Watch the full demo →](https://github.com/tanmeipheng/push-to-prod-mediacorp/blob/develop/artifacts/presentation/PushToProd-LetMeSleep.mp4)**
+> 📹 **[Watch the full demo →](https://youtu.be/hIc4GulS94o)**
 >
 > *Upload the video to a GitHub release or drag it into a GitHub issue to get a streamable link, then replace the placeholder above.*
 
