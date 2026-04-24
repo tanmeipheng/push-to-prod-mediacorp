@@ -1,0 +1,34 @@
+services:
+  - type: web
+    name: tfah-backend
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn dashboard.backend.app:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11.9"
+      - key: CORS_ORIGINS
+        sync: false  # set manually to your Vercel frontend URL
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: GITHUB_TOKEN
+        sync: false
+      - key: GITHUB_REPO
+        sync: false
+      - key: SLACK_WEBHOOK_URL
+        sync: false
+      - key: SLACK_CODE_OWNER
+        sync: false
+      - key: MOCK_SERVER_URL
+        sync: false
+      - key: JIRA_BOARD_URL
+        sync: false
+      - key: JIRA_USER_EMAIL
+        sync: false
+      - key: JIRA_API_TOKEN
+        sync: false
+      - key: TFAH_PUSH_TO_REMOTE
+        value: "true"
+      - key: TFAH_BASE_BRANCH
+        value: "develop"
