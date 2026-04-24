@@ -1,7 +1,15 @@
 """
-Mock API Server — Simulates a rate-limiting partner API.
-Hardcoded to return HTTP 429 Too Many Requests on every call.
+Mock API Server — Simulates transient failure scenarios.
+
+Endpoints:
+  /api/data      → 429 Too Many Requests (rate limit)
+  /api/service   → 503 Service Unavailable
+  /api/gateway   → 504 Gateway Timeout
+  /api/slow      → Sleeps 30s, causing client-side timeout
+  /health        → 200 OK
 """
+
+import asyncio
 
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
@@ -20,6 +28,35 @@ async def get_data():
         },
         headers={"Retry-After": "5"},
     )
+
+
+@app.get("/api/service")
+async def service_unavailable():
+    return JSONResponse(
+        status_code=503,
+        content={
+            "error": "Service Unavailable",
+            "message": "The service is temporarily unavailable. Please try again later.",
+        },
+    )
+
+
+@app.get("/api/gateway")
+async def gateway_timeout():
+    return JSONResponse(
+        status_code=504,
+        content={
+            "error": "Gateway Timeout",
+            "message": "The upstream server did not respond in time.",
+        },
+    )
+
+
+@app.get("/api/slow")
+async def slow_endpoint():
+    """Sleeps long enough to trigger a client-side read timeout."""
+    await asyncio.sleep(30)
+    return {"data": "you should never see this"}
 
 
 @app.get("/health")

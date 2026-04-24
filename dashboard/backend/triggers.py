@@ -14,6 +14,9 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(_
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
+from dotenv import load_dotenv
+load_dotenv(os.path.join(PROJECT_ROOT, ".env"))
+
 from dashboard.backend.models import (
     add_pipeline_event,
     create_incident,
@@ -31,15 +34,18 @@ async def _emit(incident_id: int, node: str, event_type: str, data: dict | None 
     await broadcaster.broadcast(f"node_{event_type}", payload)
 
 
-async def trigger_crash() -> str:
+async def trigger_crash(scenario: str | None = None) -> str:
     """Run the crash runner and return the crash log."""
-    from crash_runner.run_and_capture import run_and_capture
+    from crash_runner.run_and_capture import run_and_capture, SCENARIOS
+    script = None
+    if scenario and scenario in SCENARIOS:
+        script = SCENARIOS[scenario][0]
     loop = asyncio.get_event_loop()
-    crash_log = await loop.run_in_executor(None, run_and_capture)
+    crash_log = await loop.run_in_executor(None, run_and_capture, script)
     return crash_log
 
 
-async def trigger_classify(incident_id: int, crash_log: str) -> dict:
+async def trigger_classify(incident_id: int, crash_log: str, source_file_path_override: str | None = None) -> dict:
     """Classify a crash log and update the incident."""
     from agent.router import classify_fault
     from notifier.slack_webhook import send_detection_alert, send_triage_complete_alert
@@ -48,7 +54,7 @@ async def trigger_classify(incident_id: int, crash_log: str) -> dict:
     try:
         # Send detection alert to Slack
         loop = asyncio.get_event_loop()
-        source_file_path = "vulnerable_app/integration.py"
+        source_file_path = source_file_path_override or "vulnerable_app/integration.py"
         await loop.run_in_executor(None, lambda: send_detection_alert(source_file_path=source_file_path))
         await _emit(incident_id, "classify", "slack_detection", {"notification": "detected"})
 
@@ -236,24 +242,27 @@ async def trigger_notify(incident_id: int, fault_type: str, action: str, confide
         raise
 
 
-async def run_full_pipeline(crash_log: str | None = None) -> int:
+async def run_full_pipeline(crash_log: str | None = None, scenario: str | None = None) -> int:
     """Run the complete TFAH pipeline with dashboard tracking."""
+    from crash_runner.run_and_capture import SCENARIOS, DEFAULT_SCENARIO
+
+    scenario = scenario or DEFAULT_SCENARIO
+    _, source_file_path = SCENARIOS.get(scenario, SCENARIOS[DEFAULT_SCENARIO])
+
     # Step 1: Crash
     if not crash_log:
-        crash_log = await trigger_crash()
+        crash_log = await trigger_crash(scenario=scenario)
 
     # Read source code
-    source_path = os.path.join(PROJECT_ROOT, "vulnerable_app", "integration.py")
+    source_path = os.path.join(PROJECT_ROOT, source_file_path)
     with open(source_path) as f:
         source_code = f.read()
-
-    source_file_path = "vulnerable_app/integration.py"
     incident_id = create_incident(crash_log, source_code, source_file_path)
     await broadcaster.broadcast("pipeline_start", {"incident_id": incident_id})
 
     try:
         # Step 2: Classify
-        classification = await trigger_classify(incident_id, crash_log)
+        classification = await trigger_classify(incident_id, crash_log, source_file_path_override=source_file_path)
 
         if classification["fault_type"] == "unknown":
             update_incident(incident_id, status="skipped")

@@ -118,17 +118,19 @@ export default function Dashboard() {
         />
 
         {/* Timeline + Pipeline in a flexible layout */}
-        <div className="flex gap-6">
+        <div className="flex gap-6 h-[340px]">
           <div className={`transition-all duration-300 ease-in-out ${
-            timelineCollapsed ? "w-10 flex-shrink-0" : "w-1/2 flex-shrink-0"
+            timelineCollapsed ? "w-10 flex-shrink-0" : "w-[380px] flex-shrink-0"
           }`}>
             <TimelineChart data={timeline} collapsed={timelineCollapsed} onToggle={() => setTimelineCollapsed(c => !c)} />
           </div>
-          <div className="flex-1 min-w-0 space-y-4">
-            <h3 className="text-sm font-semibold text-muted uppercase tracking-wider">
+          <div className="flex-1 min-w-0 flex flex-col">
+            <h3 className="text-sm font-semibold text-muted uppercase tracking-wider mb-3 flex-shrink-0">
               Pipeline Status
             </h3>
-            <PipelineGraph nodeStates={nodes} slackStages={slackStages} />
+            <div className="flex-1 min-h-0">
+              <PipelineGraph nodeStates={nodes} slackStages={slackStages} />
+            </div>
           </div>
         </div>
 

@@ -67,6 +67,18 @@ def init_db():
             FOREIGN KEY (incident_id) REFERENCES incidents(id)
         );
     """)
+    # Migrate: add columns that may be missing from older schemas
+    _migrate_columns = [
+        ("pipeline_status", "TEXT"),
+        ("notifications_sent", "TEXT"),
+        ("error_message", "TEXT"),
+        ("source_file_path", "TEXT DEFAULT 'vulnerable_app/integration.py'"),
+    ]
+    for col_name, col_type in _migrate_columns:
+        try:
+            conn.execute(f"ALTER TABLE incidents ADD COLUMN {col_name} {col_type}")
+        except sqlite3.OperationalError:
+            pass  # column already exists
     conn.commit()
     conn.close()
 
