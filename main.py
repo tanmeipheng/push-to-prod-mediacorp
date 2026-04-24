@@ -5,6 +5,9 @@ Usage:
     # Full flow: crash mock server → capture → classify → fix → PR → notify
     python main.py
 
+    # Run a specific failure scenario:
+    python main.py --scenario 503
+
     # Skip crash capture, feed a log file directly:
     python main.py --log /path/to/crash.log
 """
@@ -19,6 +22,8 @@ load_dotenv()
 
 
 def main():
+    from crash_runner.run_and_capture import SCENARIOS
+
     parser = argparse.ArgumentParser(description="Transient Fault Auto-Healer")
     parser.add_argument(
         "--log",
@@ -30,9 +35,20 @@ def main():
         "--source",
         type=str,
         default=None,
-        help="Path to the vulnerable source file. Defaults to vulnerable_app/integration.py.",
+        help="Path to the vulnerable source file. Auto-detected when using --scenario.",
+    )
+    parser.add_argument(
+        "--scenario",
+        type=str,
+        default=None,
+        choices=list(SCENARIOS.keys()),
+        help=f"Failure scenario to run. Choices: {', '.join(SCENARIOS.keys())}. Default: 429.",
     )
     args = parser.parse_args()
+
+    # ── Resolve scenario ──────────────────────────────────────
+    scenario = args.scenario or "429"
+    script_path, source_file_rel = SCENARIOS[scenario]
 
     # ── Step 1: Get the crash log ─────────────────────────────
     if args.log:
@@ -40,9 +56,9 @@ def main():
             crash_log = f.read()
         print(f"📄 Loaded crash log from {args.log}")
     else:
-        print("💥 Running vulnerable worker against mock server…")
+        print(f"💥 Running vulnerable worker ({scenario}) against mock server…")
         from crash_runner.run_and_capture import run_and_capture
-        crash_log = run_and_capture()
+        crash_log = run_and_capture(script=script_path)
 
     if not crash_log.strip():
         print("❌ No crash output captured. Is the mock server running?")
@@ -57,12 +73,15 @@ def main():
 
     # ── Step 2: Read the vulnerable source ────────────────────
     source_path = args.source or os.path.join(
-        os.path.dirname(__file__), "vulnerable_app", "integration.py"
+        os.path.dirname(__file__), source_file_rel
     )
     source_path = os.path.abspath(source_path)
 
     with open(source_path, "r") as f:
         source_code = f.read()
+
+    # Use the relative path for PR commits
+    source_file_path = args.source or source_file_rel
 
     print(f"\n📂 Source file: {source_path}")
 
@@ -73,7 +92,7 @@ def main():
     final_state = run_pipeline(
         crash_log=crash_log,
         source_code=source_code,
-        source_file_path="vulnerable_app/integration.py",
+        source_file_path=source_file_path,
     )
 
     # ── Step 4: Summary ───────────────────────────────────────

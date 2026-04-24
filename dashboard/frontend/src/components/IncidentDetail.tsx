@@ -113,6 +113,16 @@ export default function IncidentDetail({
               🔗 View PR
             </a>
           )}
+          {incident.jira_issue_url && (
+            <a
+              href={incident.jira_issue_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-3 py-1.5 rounded-lg bg-blue-800 hover:bg-blue-700 text-white text-xs font-medium transition-colors"
+            >
+              🎫 {incident.jira_issue_key || "View Jira"}
+            </a>
+          )}
         </div>
 
         {actionMsg && (
@@ -168,6 +178,38 @@ export default function IncidentDetail({
                 <span className="text-xs font-medium text-blue-300 bg-blue-900/40 px-2 py-0.5 rounded-full">
                   {incident.pipeline_status}
                 </span>
+              </div>
+            )}
+            {incident.jira_issue_key && (
+              <div className="mt-2 flex items-center gap-2">
+                <span className="text-xs text-muted">Jira:</span>
+                {incident.jira_issue_url ? (
+                  <a
+                    href={incident.jira_issue_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs font-medium text-blue-300 hover:text-blue-200 bg-blue-900/40 px-2 py-0.5 rounded-full transition-colors"
+                  >
+                    🎫 {incident.jira_issue_key}
+                  </a>
+                ) : (
+                  <span className="text-xs font-medium text-blue-300 bg-blue-900/40 px-2 py-0.5 rounded-full">
+                    🎫 {incident.jira_issue_key}
+                  </span>
+                )}
+                {incident.jira_status && (
+                  <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
+                    incident.jira_status.toUpperCase() === "DONE"
+                      ? "text-green-300 bg-green-900/40"
+                      : incident.jira_status.toUpperCase() === "IN REVIEW"
+                      ? "text-purple-300 bg-purple-900/40"
+                      : incident.jira_status.toUpperCase() === "IN PROGRESS"
+                      ? "text-yellow-300 bg-yellow-900/40"
+                      : "text-blue-300 bg-blue-900/40"
+                  }`}>
+                    {incident.jira_status}
+                  </span>
+                )}
               </div>
             )}
           </div>

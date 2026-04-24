@@ -1,5 +1,5 @@
 """
-Crash Runner — Executes the vulnerable worker against the mock server
+Crash Runner — Executes a vulnerable worker against the mock server
 and captures the stderr traceback for the agent pipeline.
 """
 
@@ -8,18 +8,40 @@ import sys
 import os
 
 
-def run_and_capture() -> str:
+# ── Scenario registry ────────────────────────────────────────
+# Maps short names to (script_path, source_file_path) pairs.
+SCENARIOS = {
+    "429": ("vulnerable_app/integration.py", "vulnerable_app/integration.py"),
+    "503": ("vulnerable_app/service_down.py", "vulnerable_app/service_down.py"),
+    "504": ("vulnerable_app/gateway_timeout.py", "vulnerable_app/gateway_timeout.py"),
+    "timeout": ("vulnerable_app/connection_timeout.py", "vulnerable_app/connection_timeout.py"),
+    "deadlock": ("vulnerable_app/db_deadlock.py", "vulnerable_app/db_deadlock.py"),
+}
+
+DEFAULT_SCENARIO = "429"
+
+
+def run_and_capture(script: str | None = None) -> str:
     """
-    Run vulnerable_app/integration.py and capture stdout+stderr.
+    Run a vulnerable worker script and capture stdout+stderr.
+
+    Args:
+        script: Absolute or project-relative path to the script.
+                Defaults to vulnerable_app/integration.py.
+
     Returns the combined output as a string (the crash traceback).
     """
-    script_path = os.path.join(
-        os.path.dirname(__file__), "..", "vulnerable_app", "integration.py"
-    )
-    script_path = os.path.abspath(script_path)
+    if script is None:
+        script = os.path.join(
+            os.path.dirname(__file__), "..", "vulnerable_app", "integration.py"
+        )
+    elif not os.path.isabs(script):
+        script = os.path.join(os.path.dirname(__file__), "..", script)
+
+    script = os.path.abspath(script)
 
     result = subprocess.run(
-        [sys.executable, script_path],
+        [sys.executable, script],
         capture_output=True,
         text=True,
         timeout=30,

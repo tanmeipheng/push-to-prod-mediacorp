@@ -4,6 +4,59 @@ import { useState } from "react";
 import { motion } from "framer-motion";
 import { triggerFullPipeline, triggerCrash, startMockServer, stopMockServer } from "@/lib/api";
 
+const SCENARIOS = [
+  {
+    key: "429",
+    label: "429 Rate Limit",
+    icon: "🚦",
+    color: "from-orange-600 to-amber-700",
+    border: "border-orange-700",
+    bg: "bg-orange-900/30",
+    desc: "Too Many Requests — partner API rate limit",
+    worker: "Data Sync Worker",
+  },
+  {
+    key: "503",
+    label: "503 Service Down",
+    icon: "🔌",
+    color: "from-red-600 to-rose-700",
+    border: "border-red-700",
+    bg: "bg-red-900/30",
+    desc: "Service Unavailable — catalog service offline",
+    worker: "Inventory Sync Worker",
+  },
+  {
+    key: "504",
+    label: "504 Gateway Timeout",
+    icon: "⏱️",
+    color: "from-purple-600 to-violet-700",
+    border: "border-purple-700",
+    bg: "bg-purple-900/30",
+    desc: "Gateway Timeout — upstream unresponsive",
+    worker: "Payment Gateway Worker",
+  },
+  {
+    key: "timeout",
+    label: "Connection Timeout",
+    icon: "🔗",
+    color: "from-yellow-600 to-amber-600",
+    border: "border-yellow-700",
+    bg: "bg-yellow-900/30",
+    desc: "ReadTimeout — endpoint too slow to respond",
+    worker: "Metrics Collector",
+  },
+  {
+    key: "deadlock",
+    label: "DB Deadlock",
+    icon: "🗄️",
+    color: "from-teal-600 to-cyan-700",
+    border: "border-teal-700",
+    bg: "bg-teal-900/30",
+    desc: "database is locked — concurrent write contention",
+    worker: "Report Generator",
+  },
+] as const;
+
 export default function TriggerPanel({
   onPipelineStarted,
 }: {
@@ -12,6 +65,7 @@ export default function TriggerPanel({
   const [loading, setLoading] = useState<string | null>(null);
   const [crashLog, setCrashLog] = useState("");
   const [showPasteLog, setShowPasteLog] = useState(false);
+  const [selectedScenario, setSelectedScenario] = useState<string>("429");
   const [message, setMessage] = useState<{ text: string; type: "success" | "error" } | null>(null);
 
   const showMessage = (text: string, type: "success" | "error") => {
@@ -22,8 +76,8 @@ export default function TriggerPanel({
   const handleRunPipeline = async () => {
     setLoading("pipeline");
     try {
-      await triggerFullPipeline(crashLog || undefined);
-      showMessage("Pipeline started!", "success");
+      await triggerFullPipeline(crashLog || undefined, selectedScenario);
+      showMessage(`Pipeline started for scenario: ${selectedScenario}`, "success");
       onPipelineStarted?.();
       setCrashLog("");
       setShowPasteLog(false);
@@ -37,10 +91,10 @@ export default function TriggerPanel({
   const handleCrashWorker = async () => {
     setLoading("crash");
     try {
-      const result = await triggerCrash();
+      const result = await triggerCrash(selectedScenario);
       setCrashLog(result.crash_log);
       setShowPasteLog(true);
-      showMessage("Crash log captured!", "success");
+      showMessage(`Crash log captured for ${selectedScenario}!`, "success");
     } catch (e) {
       showMessage(`Failed: ${e}`, "error");
     } finally {
@@ -72,10 +126,12 @@ export default function TriggerPanel({
     }
   };
 
+  const activeScenario = SCENARIOS.find((s) => s.key === selectedScenario)!;
+
   return (
     <div className="rounded-xl border border-card-border bg-card p-5">
       <h3 className="text-sm font-semibold text-muted uppercase tracking-wider mb-4">
-        Quick Actions
+        Failure Scenarios
       </h3>
 
       {message && (
@@ -93,6 +149,44 @@ export default function TriggerPanel({
         </motion.div>
       )}
 
+      {/* Scenario cards */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-5">
+        {SCENARIOS.map((s) => (
+          <button
+            key={s.key}
+            onClick={() => setSelectedScenario(s.key)}
+            className={`relative rounded-lg border p-3 text-left transition-all duration-200 cursor-pointer ${
+              selectedScenario === s.key
+                ? `${s.border} ${s.bg} ring-1 ring-offset-0 ring-white/20 scale-[1.02]`
+                : "border-gray-700/50 bg-gray-800/40 hover:bg-gray-800/70 hover:border-gray-600"
+            }`}
+          >
+            <div className="text-xl mb-1.5">{s.icon}</div>
+            <div className="text-xs font-semibold text-white leading-tight">{s.label}</div>
+            <div className="text-[10px] text-gray-400 mt-1 leading-snug">{s.worker}</div>
+            {selectedScenario === s.key && (
+              <motion.div
+                layoutId="scenario-indicator"
+                className={`absolute inset-x-0 bottom-0 h-0.5 rounded-b-lg bg-gradient-to-r ${s.color}`}
+              />
+            )}
+          </button>
+        ))}
+      </div>
+
+      {/* Selected scenario detail */}
+      <div className={`rounded-lg border ${activeScenario.border} ${activeScenario.bg} px-4 py-3 mb-4`}>
+        <div className="flex items-center gap-2 mb-1">
+          <span className="text-lg">{activeScenario.icon}</span>
+          <span className="text-sm font-semibold text-white">{activeScenario.label}</span>
+          <span className="ml-auto text-[10px] font-mono text-gray-400 bg-gray-800/60 px-2 py-0.5 rounded">
+            --scenario {activeScenario.key}
+          </span>
+        </div>
+        <p className="text-xs text-gray-300">{activeScenario.desc}</p>
+      </div>
+
+      {/* Action buttons */}
       <div className="flex flex-wrap gap-3 mb-4">
         <button
           onClick={handleRunPipeline}

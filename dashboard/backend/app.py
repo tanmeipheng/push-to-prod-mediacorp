@@ -79,6 +79,17 @@ def timeline(days: int = 7):
     return get_recent_timeline(days)
 
 
+# ── Scenarios ─────────────────────────────────────────────────
+
+@app.get("/api/scenarios")
+def list_scenarios():
+    from crash_runner.run_and_capture import SCENARIOS
+    return {
+        key: {"script": script, "source_file": source}
+        for key, (script, source) in SCENARIOS.items()
+    }
+
+
 # ── Incidents ─────────────────────────────────────────────────
 
 @app.get("/api/incidents")
@@ -99,13 +110,14 @@ def incident_detail(incident_id: int):
 
 class PipelineRunRequest(BaseModel):
     crash_log: str | None = None
+    scenario: str | None = None
 
 
 @app.post("/api/pipeline/run")
 async def pipeline_run(req: PipelineRunRequest, background_tasks: BackgroundTasks):
     async def _run():
         try:
-            await run_full_pipeline(crash_log=req.crash_log)
+            await run_full_pipeline(crash_log=req.crash_log, scenario=req.scenario)
         except Exception:
             pass  # errors already recorded in DB
     background_tasks.add_task(_run)
@@ -120,7 +132,7 @@ async def pipeline_replay(incident_id: int, background_tasks: BackgroundTasks):
 
     async def _run():
         try:
-            await run_full_pipeline(crash_log=incident["crash_log"])
+            await run_full_pipeline(crash_log=incident["crash_log"], scenario=incident.get("scenario"))
         except Exception:
             pass
     background_tasks.add_task(_run)
@@ -129,9 +141,13 @@ async def pipeline_replay(incident_id: int, background_tasks: BackgroundTasks):
 
 # ── Trigger: Individual Steps ─────────────────────────────────
 
+class CrashRequest(BaseModel):
+    scenario: str | None = None
+
+
 @app.post("/api/trigger/crash")
-async def api_trigger_crash():
-    crash_log = await trigger_crash()
+async def api_trigger_crash(req: CrashRequest):
+    crash_log = await trigger_crash(scenario=req.scenario)
     return {"crash_log": crash_log}
 
 

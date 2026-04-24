@@ -19,6 +19,7 @@ interface Stats {
   errored: number;
   running: number;
   prs_opened: number;
+  jira_tickets: number;
 }
 
 interface TimelineDay {
@@ -31,13 +32,13 @@ interface TimelineDay {
 
 export default function Dashboard() {
   const [stats, setStats] = useState<Stats>({
-    total: 0, fixed: 0, skipped: 0, errored: 0, running: 0, prs_opened: 0,
+    total: 0, fixed: 0, skipped: 0, errored: 0, running: 0, prs_opened: 0, jira_tickets: 0,
   });
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [timeline, setTimeline] = useState<TimelineDay[]>([]);
   const [selectedIncident, setSelectedIncident] = useState<(Incident & { events?: Array<{ node: string; event_type: string; data: string | null; created_at: string }> }) | null>(null);
   const [timelineCollapsed, setTimelineCollapsed] = useState(false);
-  const { nodes, slackStages, lastEvent } = usePipelineState();
+  const { nodes, slackStages, jiraState, lastEvent } = usePipelineState();
 
   const loadData = useCallback(async () => {
     try {
@@ -92,7 +93,7 @@ export default function Dashboard() {
       <header className="border-b border-card-border bg-card/50 backdrop-blur-sm sticky top-0 z-40">
         <div className="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <span className="text-xl font-bold text-white">🚨 TFAH</span>
+            <span className="text-xl font-bold text-white">🚨 TFAH (Transient Fault Auto-healer)</span>
             <span className="text-sm text-muted">Command Center</span>
           </div>
           <nav className="flex items-center gap-6">
@@ -112,23 +113,25 @@ export default function Dashboard() {
           stats={[
             { label: "Total Incidents", value: stats.total, icon: "📊", color: "text-white" },
             { label: "Auto-Fixed", value: stats.fixed, icon: "✅", color: "text-accent-green" },
-            { label: "Skipped", value: stats.skipped, icon: "⏭", color: "text-accent-yellow" },
+            { label: "Jira Tickets", value: stats.jira_tickets, icon: "🎫", color: "text-accent-blue" },
             { label: "PRs Opened", value: stats.prs_opened, icon: "📦", color: "text-accent-purple" },
           ]}
         />
 
         {/* Timeline + Pipeline in a flexible layout */}
-        <div className="flex gap-6">
+        <div className="flex gap-6 h-[340px]">
           <div className={`transition-all duration-300 ease-in-out ${
-            timelineCollapsed ? "w-10 flex-shrink-0" : "w-1/2 flex-shrink-0"
+            timelineCollapsed ? "w-10 flex-shrink-0" : "w-[380px] flex-shrink-0"
           }`}>
             <TimelineChart data={timeline} collapsed={timelineCollapsed} onToggle={() => setTimelineCollapsed(c => !c)} />
           </div>
-          <div className="flex-1 min-w-0 space-y-4">
-            <h3 className="text-sm font-semibold text-muted uppercase tracking-wider">
+          <div className="flex-1 min-w-0 flex flex-col">
+            <h3 className="text-sm font-semibold text-muted uppercase tracking-wider mb-3 flex-shrink-0">
               Pipeline Status
             </h3>
-            <PipelineGraph nodeStates={nodes} slackStages={slackStages} />
+            <div className="flex-1 min-h-0">
+              <PipelineGraph nodeStates={nodes} slackStages={slackStages} jiraState={jiraState} />
+            </div>
           </div>
         </div>
 
